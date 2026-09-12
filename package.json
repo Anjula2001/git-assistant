@@ -1,0 +1,34 @@
+{
+  "name": "git-assistant",
+  "displayName": "IBE Commit",
+  "description": "AI-powered Git commit and push assistant for VS Code",
+  "version": "0.0.1",
+  "publisher": "Anjula2001",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "git-assistant.hello",
+        "title": "IBE Commit: Hello"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc --noEmit -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.9.2"
+  }
+}
