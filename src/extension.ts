@@ -28,6 +28,11 @@ export function activate(context: vscode.ExtensionContext) {
 
       const diff = await repository.diff();
 
+      const history = await repository.log(5);
+
+        console.log("IBE COMMIT HISTORY:");
+        console.log(history);
+
         console.log("IBE COMMIT DIFF:");
         console.log(diff);
 
