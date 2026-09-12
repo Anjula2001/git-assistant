@@ -15,11 +15,15 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "git-assistant.hello",
-        "title": "IBE Commit: Hello"
-      }
-    ]
+  {
+    "command": "git-assistant.hello",
+    "title": "IBE Commit: Hello"
+  },
+  {
+    "command": "git-assistant.configureApiKey",
+    "title": "IBE Commit: Configure OpenAI API Key"
+  }
+]
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -30,5 +34,8 @@
     "@types/node": "^24.13.4",
     "@types/vscode": "^1.90.0",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "openai": "^7.15.0"
   }
 }
