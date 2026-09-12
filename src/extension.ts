@@ -26,6 +26,11 @@ export function activate(context: vscode.ExtensionContext) {
 
       const changes = repository.state.workingTreeChanges;
 
+      const diff = await repository.diff();
+
+        console.log("IBE COMMIT DIFF:");
+        console.log(diff);
+
       const fileNames = changes
         .map((change: { uri: vscode.Uri }) => change.uri.fsPath)
         .join("\n");
