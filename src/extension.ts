@@ -79,41 +79,51 @@ export function activate(context: vscode.ExtensionContext) {
         // Select Correct Repository
         // --------------------------------
 
-        const workspaceFolder =
-          vscode.workspace.workspaceFolders?.[0];
+        let repository = null;
 
-        if (!workspaceFolder) {
-          vscode.window.showWarningMessage(
-            "IBE Commit: No workspace folder found."
-          );
-          return;
+        const activeUri =
+          vscode.window.activeTextEditor?.document.uri;
+
+        if (activeUri) {
+          repository = git.getRepository(activeUri);
         }
 
-        const workspacePath =
-          workspaceFolder.uri.fsPath;
+        if (!repository) {
+          const workspaceFolder =
+            vscode.workspace.workspaceFolders?.[0];
 
-        const repository = git.repositories
-          .filter(
-            (repo: { rootUri: vscode.Uri }) => {
-              const repoPath =
-                repo.rootUri.fsPath;
+          if (workspaceFolder) {
+            const workspacePath =
+              workspaceFolder.uri.fsPath;
 
-              return (
-                workspacePath === repoPath ||
-                workspacePath.startsWith(
-                  `${repoPath}/`
-                )
-              );
-            }
-          )
-          .sort(
-            (
-              a: { rootUri: vscode.Uri },
-              b: { rootUri: vscode.Uri }
-            ) =>
-              b.rootUri.fsPath.length -
-              a.rootUri.fsPath.length
-          )[0];
+            repository = git.repositories
+              .filter(
+                (repo: { rootUri: vscode.Uri }) => {
+                  const repoPath =
+                    repo.rootUri.fsPath;
+
+                  return (
+                    workspacePath === repoPath ||
+                    workspacePath.startsWith(
+                      `${repoPath}/`
+                    )
+                  );
+                }
+              )
+              .sort(
+                (
+                  a: { rootUri: vscode.Uri },
+                  b: { rootUri: vscode.Uri }
+                ) =>
+                  b.rootUri.fsPath.length -
+                  a.rootUri.fsPath.length
+              )[0];
+          }
+        }
+
+        if (!repository && git.repositories.length === 1) {
+          repository = git.repositories[0];
+        }
 
         if (!repository) {
           vscode.window.showWarningMessage(
@@ -172,8 +182,13 @@ export function activate(context: vscode.ExtensionContext) {
         // 2. Git Diff
         // --------------------------------
 
-        const rawDiff =
-          await repository.diff();
+        let rawDiff = "";
+        try {
+          rawDiff = (await repository.diff()) || "";
+        } catch (error) {
+          console.warn("IBE: Unable to retrieve raw diff:", error);
+          rawDiff = "";
+        }
 
         // Get absolute paths of relevant files (including originalUri for renames)
 
@@ -249,7 +264,14 @@ export function activate(context: vscode.ExtensionContext) {
         // 3. Git History
         // --------------------------------
 
-        const history = await repository.log({ maxEntries: 5 });
+        let history: any[] = [];
+        try {
+          history = (await repository.log({ maxEntries: 5 })) || [];
+        } catch (error) {
+          console.log("IBE: No commit history found (repository may have no commits yet).");
+          history = [];
+        }
+
         const recentCommits = (history || [])
           .slice(0, 5)
           .map(
@@ -377,8 +399,18 @@ export function activate(context: vscode.ExtensionContext) {
         };
 
         try {
-          suggestion =
-            JSON.parse(rawSuggestion);
+          let cleaned = (rawSuggestion || "").trim();
+          if (cleaned.startsWith("```")) {
+            cleaned = cleaned
+              .replace(/^```(?:json)?\s*/i, "")
+              .replace(/\s*```$/, "");
+          }
+          const firstBrace = cleaned.indexOf("{");
+          const lastBrace = cleaned.lastIndexOf("}");
+          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+          }
+          suggestion = JSON.parse(cleaned);
         } catch (error) {
           vscode.window.showErrorMessage(
             "IBE Commit: AI returned invalid JSON."
@@ -397,12 +429,26 @@ export function activate(context: vscode.ExtensionContext) {
         // --------------------------------
 
         if (
+          !suggestion ||
+          typeof suggestion !== "object" ||
           !suggestion.type ||
           !suggestion.message ||
           !suggestion.reason
         ) {
           vscode.window.showErrorMessage(
-            "IBE Commit: AI response is missing required fields."
+            "IBE Commit: AI response is missing required fields (type, message, reason)."
+          );
+
+          return;
+        }
+
+        suggestion.type = String(suggestion.type).trim();
+        suggestion.message = String(suggestion.message).trim();
+        suggestion.reason = String(suggestion.reason).trim();
+
+        if (!suggestion.type || !suggestion.message || !suggestion.reason) {
+          vscode.window.showErrorMessage(
+            "IBE Commit: AI response contains empty required fields."
           );
 
           return;
@@ -524,33 +570,38 @@ export function activate(context: vscode.ExtensionContext) {
 
             // Push
 
+            if (!repository.state.remotes || repository.state.remotes.length === 0) {
+              vscode.window.showWarningMessage(
+                `IBE Commit: Commit created successfully, but push was skipped because no remote repository is configured.\n${suggestion.message}`
+              );
+              return;
+            }
+
+            const currentBranch = repository.state.HEAD?.name;
+            if (!currentBranch) {
+              vscode.window.showWarningMessage(
+                `IBE Commit: Commit created successfully, but push was skipped because the repository is in a detached HEAD state. Please checkout a branch before pushing.\n${suggestion.message}`
+              );
+              return;
+            }
+
             try {
               await repository.push();
             } catch (error) {
-              const errorText =
-                String(error);
+              const errorText = String(error).toLowerCase();
+              const isNoUpstream =
+                errorText.includes("noupstreambranch") ||
+                errorText.includes("no upstream") ||
+                (error as any)?.gitErrorCode === "NoUpstreamBranch";
 
-              if (
-                errorText.includes(
-                  "NoUpstreamBranch"
-                )
-              ) {
-                const branchName =
-                  repository.state.HEAD?.name;
-
-                if (!branchName) {
-                  throw new Error(
-                    "Unable to determine current branch."
-                  );
-                }
-
+              if (isNoUpstream) {
                 console.log(
-                  `IBE: No upstream branch. Setting origin/${branchName}`
+                  `IBE: No upstream branch. Setting origin/${currentBranch}`
                 );
 
                 await repository.push(
                   "origin",
-                  branchName,
+                  currentBranch,
                   true
                 );
               } else {
@@ -581,11 +632,16 @@ export function activate(context: vscode.ExtensionContext) {
           error
         );
 
-        vscode.window.showErrorMessage(
-          `IBE Commit: Unexpected error. ${String(
-            error
-          )}`
-        );
+        const errorMessage = String(error);
+        if (errorMessage.includes("OpenAI API key is required")) {
+          vscode.window.showWarningMessage(
+            "IBE Commit: OpenAI API key is required to generate commit suggestions."
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `IBE Commit: Unexpected error. ${errorMessage}`
+          );
+        }
       }
     }
   );
