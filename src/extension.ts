@@ -464,21 +464,31 @@ export function activate(context: vscode.ExtensionContext) {
         console.log(suggestion.reason);
 
         // --------------------------------
-        // 7. User Review
+        // 7. User Review & Edit Message
         // --------------------------------
 
-        const action =
-          await vscode.window.showInformationMessage(
-            `AI Suggestion\n\n${suggestion.type}: ${suggestion.message}\n\nReason: ${suggestion.reason}`,
-            "Commit",
-            "Commit & Push"
-          );
+        const initialCommitMessage =
+          suggestion.message.toLowerCase().startsWith(suggestion.type.toLowerCase())
+            ? suggestion.message
+            : `${suggestion.type}: ${suggestion.message}`;
 
-        console.log(
-          "IBE SELECTED ACTION:"
+        const reviewResult = await promptForCommitMessageWithWebview(
+          initialCommitMessage,
+          suggestion.reason
         );
 
+        if (!reviewResult) {
+          console.log("IBE: User cancelled review.");
+          return;
+        }
+
+        const { action, message: finalCommitMessage } = reviewResult;
+
+        console.log("IBE SELECTED ACTION:");
         console.log(action);
+
+        console.log("IBE FINAL COMMIT MESSAGE:");
+        console.log(finalCommitMessage);
 
         // --------------------------------
         // 8. Commit & Optional Push
@@ -510,9 +520,9 @@ export function activate(context: vscode.ExtensionContext) {
               "IBE FILES STAGED."
             );
 
-            // Commit
+            // Commit with the edited message
             await repository.commit(
-              suggestion.message
+              finalCommitMessage
             );
 
             console.log(
@@ -521,7 +531,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (action === "Commit") {
               vscode.window.showInformationMessage(
-                `IBE Commit: Commit created successfully.\n${suggestion.message}`
+                `IBE Commit: Commit created successfully.\n${finalCommitMessage}`
               );
               return;
             }
@@ -529,7 +539,7 @@ export function activate(context: vscode.ExtensionContext) {
             // Push (for "Commit & Push")
             if (!repository.state.remotes || repository.state.remotes.length === 0) {
               vscode.window.showWarningMessage(
-                `IBE Commit: Commit created successfully, but push was skipped because no remote repository is configured.\n${suggestion.message}`
+                `IBE Commit: Commit created successfully, but push was skipped because no remote repository is configured.\n${finalCommitMessage}`
               );
               return;
             }
@@ -537,7 +547,7 @@ export function activate(context: vscode.ExtensionContext) {
             const currentBranch = repository.state.HEAD?.name;
             if (!currentBranch) {
               vscode.window.showWarningMessage(
-                `IBE Commit: Commit created successfully, but push was skipped because the repository is in a detached HEAD state. Please checkout a branch before pushing.\n${suggestion.message}`
+                `IBE Commit: Commit created successfully, but push was skipped because the repository is in a detached HEAD state. Please checkout a branch before pushing.\n${finalCommitMessage}`
               );
               return;
             }
@@ -571,7 +581,7 @@ export function activate(context: vscode.ExtensionContext) {
             );
 
             vscode.window.showInformationMessage(
-              `IBE Commit: Commit & Push successful.\n${suggestion.message}`
+              `IBE Commit: Commit & Push successful.\n${finalCommitMessage}`
             );
           } catch (error) {
             vscode.window.showErrorMessage(
@@ -611,6 +621,180 @@ export function activate(context: vscode.ExtensionContext) {
     disposable,
     configureApiKey
   );
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function promptForCommitMessageWithWebview(
+  initialMessage: string,
+  reason: string
+): Promise<{ action: "Commit" | "Commit & Push"; message: string } | undefined> {
+  return new Promise((resolve) => {
+    const panel = vscode.window.createWebviewPanel(
+      "ibeCommitReview",
+      "IBE Commit: Review Message",
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: false,
+      }
+    );
+
+    let resolved = false;
+
+    panel.webview.html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBE Commit Review</title>
+  <style>
+    body {
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-foreground);
+      background-color: var(--vscode-editor-background);
+      padding: 24px;
+      margin: 0;
+      max-width: 680px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground));
+    }
+    .reason-box {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      background-color: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+      border-left: 3px solid var(--vscode-textBlockQuote-border, #007acc);
+      padding: 8px 12px;
+      border-radius: 2px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 90px;
+      padding: 10px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: var(--vscode-editor-font-size, 13px);
+      color: var(--vscode-input-foreground);
+      background-color: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border, #3c3c3c);
+      border-radius: 4px;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      border-color: var(--vscode-focusBorder);
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    button {
+      padding: 7px 16px;
+      font-size: 13px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-weight: 500;
+      border: 1px solid var(--vscode-button-border, transparent);
+    }
+    .btn-primary {
+      color: var(--vscode-button-foreground);
+      background-color: var(--vscode-button-background);
+    }
+    .btn-primary:hover {
+      background-color: var(--vscode-button-hoverBackground);
+    }
+    .btn-secondary {
+      color: var(--vscode-button-secondaryForeground);
+      background-color: var(--vscode-button-secondaryBackground);
+    }
+    .btn-secondary:hover {
+      background-color: var(--vscode-button-secondaryHoverBackground);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>IBE Commit: Review &amp; Edit Commit Message</h2>
+    ${reason ? `<div class="reason-box"><strong>Reason:</strong> ${escapeHtml(reason)}</div>` : ""}
+    <label class="field-label" for="commit-message">Commit Message</label>
+    <textarea id="commit-message" placeholder="Enter commit message...">${escapeHtml(initialMessage)}</textarea>
+    <div class="buttons">
+      <button id="btn-commit" class="btn-primary">Commit</button>
+      <button id="btn-commit-push" class="btn-secondary">Commit &amp; Push</button>
+    </div>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+    const textarea = document.getElementById('commit-message');
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    document.getElementById('btn-commit').addEventListener('click', () => {
+      vscode.postMessage({ action: 'Commit', message: textarea.value });
+    });
+
+    document.getElementById('btn-commit-push').addEventListener('click', () => {
+      vscode.postMessage({ action: 'Commit & Push', message: textarea.value });
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('btn-commit').click();
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+    panel.webview.onDidReceiveMessage((data) => {
+      if (data.action === "Commit" || data.action === "Commit & Push") {
+        const finalMessage = String(data.message || "").trim();
+        if (!finalMessage) {
+          vscode.window.showWarningMessage(
+            "IBE Commit: Commit message cannot be empty."
+          );
+          return;
+        }
+
+        resolved = true;
+        panel.dispose();
+        resolve({ action: data.action, message: finalMessage });
+      }
+    });
+
+    panel.onDidDispose(() => {
+      if (!resolved) {
+        resolve(undefined);
+      }
+    });
+  });
 }
 
 export function deactivate() {}
