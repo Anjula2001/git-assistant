@@ -55,12 +55,29 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // --------------------------------
+  // Register Activity Bar View Provider
+  // --------------------------------
+
+  const activityBarProvider = new IbeCommitViewProvider();
+  let isGenerating = false;
+
+  // --------------------------------
   // Main IBE Commit Command
   // --------------------------------
 
   const disposable = vscode.commands.registerCommand(
     "git-assistant.hello",
     async () => {
+      if (isGenerating) {
+        vscode.window.showInformationMessage(
+          "IBE Commit: Generation is already in progress."
+        );
+        return;
+      }
+
+      isGenerating = true;
+      activityBarProvider.setLoading(true);
+
       try {
         // --------------------------------
         // Get VS Code Git Extension
@@ -460,6 +477,9 @@ export function activate(context: vscode.ExtensionContext) {
           };
         };
 
+        isGenerating = false;
+        activityBarProvider.setLoading(false);
+
         const reviewResult = await promptForCommitMessageWithWebview(
           initialCommitMessage,
           suggestion.reason,
@@ -830,6 +850,11 @@ export function activate(context: vscode.ExtensionContext) {
             `IBE Commit: Unexpected error. ${errorMessage}`
           );
         }
+      } finally {
+        if (isGenerating) {
+          isGenerating = false;
+          activityBarProvider.setLoading(false);
+        }
       }
     }
   );
@@ -837,8 +862,6 @@ export function activate(context: vscode.ExtensionContext) {
   // --------------------------------
   // Register Commands & Views
   // --------------------------------
-
-  const activityBarProvider = new IbeCommitViewProvider();
 
   context.subscriptions.push(
     disposable,
@@ -1434,16 +1457,21 @@ ${COMMON_REVIEW_CSS}
 export function deactivate() {}
 
 class IbeCommitViewProvider implements vscode.WebviewViewProvider {
+  private _view?: vscode.WebviewView;
+  private _isLoading: boolean = false;
+
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
   ) {
+    this._view = webviewView;
+
     webviewView.webview.options = {
       enableScripts: true,
     };
 
-    webviewView.webview.html = this._getHtmlForWebview();
+    webviewView.webview.html = this._getHtmlForWebview(this._isLoading);
 
     webviewView.webview.onDidReceiveMessage((data) => {
       if (data.command === "generateCommit") {
@@ -1452,9 +1480,23 @@ class IbeCommitViewProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand("git-assistant.configureApiKey");
       }
     });
+
+    webviewView.onDidDispose(() => {
+      this._view = undefined;
+    });
   }
 
-  private _getHtmlForWebview(): string {
+  public setLoading(isLoading: boolean) {
+    this._isLoading = isLoading;
+    if (this._view) {
+      this._view.webview.postMessage({
+        command: "setLoading",
+        isLoading,
+      });
+    }
+  }
+
+  private _getHtmlForWebview(initialLoading: boolean): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1508,18 +1550,22 @@ class IbeCommitViewProvider implements vscode.WebviewViewProvider {
       border: 1px solid var(--vscode-button-border, transparent);
       box-sizing: border-box;
     }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     .btn-primary {
       color: var(--vscode-button-foreground);
       background-color: var(--vscode-button-background);
     }
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       background-color: var(--vscode-button-hoverBackground);
     }
     .btn-secondary {
       color: var(--vscode-button-secondaryForeground);
       background-color: var(--vscode-button-secondaryBackground);
     }
-    .btn-secondary:hover {
+    .btn-secondary:hover:not(:disabled) {
       background-color: var(--vscode-button-secondaryHoverBackground);
     }
     .actions {
@@ -1527,10 +1573,80 @@ class IbeCommitViewProvider implements vscode.WebviewViewProvider {
       flex-direction: column;
       gap: 8px;
     }
+
+    /* Loading UI */
+    .loading-view {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 32px 8px;
+      box-sizing: border-box;
+    }
+    .loading-sparkle {
+      font-size: 26px;
+      color: var(--vscode-progressBar-background, #007acc);
+      animation: sparkle-pulse 2s ease-in-out infinite;
+      line-height: 1;
+      user-select: none;
+    }
+    @keyframes sparkle-pulse {
+      0%, 100% {
+        opacity: 0.7;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.15);
+      }
+    }
+    .loading-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      text-align: center;
+      line-height: 1.4;
+    }
+    .dots-container {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 0;
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--vscode-progressBar-background, #007acc);
+      animation: dot-pulse 1.4s ease-in-out infinite both;
+    }
+    .dot:nth-child(1) { animation-delay: -0.32s; }
+    .dot:nth-child(2) { animation-delay: -0.16s; }
+    .dot:nth-child(3) { animation-delay: 0s; }
+    @keyframes dot-pulse {
+      0%, 80%, 100% {
+        opacity: 0.25;
+        transform: scale(0.75);
+      }
+      40% {
+        opacity: 1;
+        transform: scale(1.2);
+      }
+    }
+    .loading-subtitle {
+      margin: 0;
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      text-align: center;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div id="normal-view" class="container" style="${initialLoading ? 'display: none;' : 'display: flex;'}">
     <div class="header">
       <h2>IBE Commit</h2>
       <p class="description">AI-powered Git commit assistant</p>
@@ -1541,13 +1657,51 @@ class IbeCommitViewProvider implements vscode.WebviewViewProvider {
     </div>
   </div>
 
+  <div id="loading-view" class="loading-view" style="${initialLoading ? 'display: flex;' : 'display: none;'}">
+    <div class="loading-sparkle">✦</div>
+    <h3 class="loading-title">Generating commit<br>message...</h3>
+    <div class="dots-container">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+    </div>
+    <p class="loading-subtitle">Analyzing your changes</p>
+  </div>
+
   <script>
     const vscode = acquireVsCodeApi();
-    document.getElementById('btn-generate').addEventListener('click', () => {
+    const normalView = document.getElementById('normal-view');
+    const loadingView = document.getElementById('loading-view');
+    const btnGenerate = document.getElementById('btn-generate');
+    const btnConfig = document.getElementById('btn-config');
+
+    function setLoading(isLoading) {
+      if (isLoading) {
+        normalView.style.display = 'none';
+        loadingView.style.display = 'flex';
+        btnGenerate.disabled = true;
+      } else {
+        loadingView.style.display = 'none';
+        normalView.style.display = 'flex';
+        btnGenerate.disabled = false;
+      }
+    }
+
+    btnGenerate.addEventListener('click', () => {
+      setLoading(true);
       vscode.postMessage({ command: 'generateCommit' });
     });
-    document.getElementById('btn-config').addEventListener('click', () => {
+
+    btnConfig.addEventListener('click', () => {
       vscode.postMessage({ command: 'configureApiKey' });
+    });
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg) return;
+      if (msg.command === 'setLoading') {
+        setLoading(msg.isLoading);
+      }
     });
   </script>
 </body>
