@@ -7,6 +7,15 @@ import { generateCommitSuggestion } from "./ai/service";
 
 const SECRET_KEY = "ibe-commit.openai-api-key";
 
+interface LastIbeCommit {
+  hash: string;
+  message: string;
+  wasPushed: boolean;
+  repoPath: string;
+}
+
+let lastIbeCommit: LastIbeCommit | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
   // --------------------------------
   // Configure OpenAI API Key
@@ -508,6 +517,23 @@ export function activate(context: vscode.ExtensionContext) {
               "IBE COMMIT CREATED."
             );
 
+            const createdCommitHash =
+              repository.state.HEAD?.commit ||
+              (await repository.log({ maxEntries: 1 }))[0]?.hash ||
+              "";
+
+            lastIbeCommit = {
+              hash: createdCommitHash,
+              message: finalCommitMessage,
+              wasPushed: false,
+              repoPath: repository.rootUri.fsPath,
+            };
+
+            console.log(
+              "IBE LAST COMMIT TRACKED:"
+            );
+            console.log(lastIbeCommit);
+
             if (action === "Commit") {
               vscode.window.showInformationMessage(
                 `IBE Commit: Commit created successfully.\n${finalCommitMessage}`
@@ -558,6 +584,10 @@ export function activate(context: vscode.ExtensionContext) {
             console.log(
               "IBE PUSH COMPLETED."
             );
+
+            if (lastIbeCommit) {
+              lastIbeCommit.wasPushed = true;
+            }
 
             vscode.window.showInformationMessage(
               `IBE Commit: Commit & Push successful.\n${finalCommitMessage}`
