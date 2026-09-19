@@ -761,6 +761,14 @@ function promptForCommitMessageWithWebview(
     .btn-secondary:hover:not(:disabled) {
       background-color: var(--vscode-button-secondaryHoverBackground);
     }
+    .btn-cancel {
+      color: var(--vscode-foreground);
+      background-color: transparent;
+      border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.35));
+    }
+    .btn-cancel:hover:not(:disabled) {
+      background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+    }
     .status-msg {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
@@ -784,6 +792,7 @@ function promptForCommitMessageWithWebview(
       <button id="btn-commit" class="btn-primary">Commit</button>
       <button id="btn-commit-push" class="btn-secondary">Commit &amp; Push</button>
       <button id="btn-regenerate" class="btn-secondary">Regenerate</button>
+      <button id="btn-cancel" class="btn-cancel">Cancel</button>
       <span id="status" class="status-msg" style="display: none;">Generating...</span>
     </div>
   </div>
@@ -796,6 +805,7 @@ function promptForCommitMessageWithWebview(
     const btnCommit = document.getElementById('btn-commit');
     const btnCommitPush = document.getElementById('btn-commit-push');
     const btnRegenerate = document.getElementById('btn-regenerate');
+    const btnCancel = document.getElementById('btn-cancel');
     const statusEl = document.getElementById('status');
 
     textarea.focus();
@@ -819,6 +829,10 @@ function promptForCommitMessageWithWebview(
       statusEl.style.display = "inline";
 
       vscode.postMessage({ action: 'Regenerate' });
+    });
+
+    btnCancel.addEventListener('click', () => {
+      vscode.postMessage({ action: 'Cancel' });
     });
 
     textarea.addEventListener('keydown', (e) => {
@@ -862,6 +876,8 @@ function promptForCommitMessageWithWebview(
 </body>
 </html>`;
 
+    let isDisposed = false;
+
     panel.webview.onDidReceiveMessage(async (data) => {
       if (data.action === "Commit" || data.action === "Commit & Push") {
         const finalMessage = String(data.message || "").trim();
@@ -873,17 +889,29 @@ function promptForCommitMessageWithWebview(
         }
 
         resolved = true;
+        isDisposed = true;
         panel.dispose();
         resolve({ action: data.action, message: finalMessage });
+      } else if (data.action === "Cancel") {
+        resolved = true;
+        isDisposed = true;
+        panel.dispose();
+        resolve(undefined);
       } else if (data.action === "Regenerate") {
         try {
           const result = await onRegenerate();
+          if (isDisposed) {
+            return;
+          }
           panel.webview.postMessage({
             command: "updateSuggestion",
             message: result.message,
             reason: result.reason,
           });
         } catch (error) {
+          if (isDisposed) {
+            return;
+          }
           const errMsg = String(error);
           console.error("IBE REGENERATION ERROR:", error);
           vscode.window.showErrorMessage(
@@ -898,7 +926,9 @@ function promptForCommitMessageWithWebview(
     });
 
     panel.onDidDispose(() => {
+      isDisposed = true;
       if (!resolved) {
+        resolved = true;
         resolve(undefined);
       }
     });
