@@ -399,56 +399,15 @@ export function activate(context: vscode.ExtensionContext) {
         };
 
         try {
-          let cleaned = (rawSuggestion || "").trim();
-          if (cleaned.startsWith("```")) {
-            cleaned = cleaned
-              .replace(/^```(?:json)?\s*/i, "")
-              .replace(/\s*```$/, "");
-          }
-          const firstBrace = cleaned.indexOf("{");
-          const lastBrace = cleaned.lastIndexOf("}");
-          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-          }
-          suggestion = JSON.parse(cleaned);
+          suggestion = parseSuggestionJson(rawSuggestion);
         } catch (error) {
           vscode.window.showErrorMessage(
-            "IBE Commit: AI returned invalid JSON."
+            `IBE Commit: AI returned invalid JSON. ${String(error)}`
           );
 
           console.error(
             "IBE AI JSON PARSE ERROR:",
             error
-          );
-
-          return;
-        }
-
-        // --------------------------------
-        // Validate AI Response
-        // --------------------------------
-
-        if (
-          !suggestion ||
-          typeof suggestion !== "object" ||
-          !suggestion.type ||
-          !suggestion.message ||
-          !suggestion.reason
-        ) {
-          vscode.window.showErrorMessage(
-            "IBE Commit: AI response is missing required fields (type, message, reason)."
-          );
-
-          return;
-        }
-
-        suggestion.type = String(suggestion.type).trim();
-        suggestion.message = String(suggestion.message).trim();
-        suggestion.reason = String(suggestion.reason).trim();
-
-        if (!suggestion.type || !suggestion.message || !suggestion.reason) {
-          vscode.window.showErrorMessage(
-            "IBE Commit: AI response contains empty required fields."
           );
 
           return;
@@ -467,14 +426,34 @@ export function activate(context: vscode.ExtensionContext) {
         // 7. User Review & Edit Message
         // --------------------------------
 
-        const initialCommitMessage =
-          suggestion.message.toLowerCase().startsWith(suggestion.type.toLowerCase())
-            ? suggestion.message
-            : `${suggestion.type}: ${suggestion.message}`;
+        const formatMessage = (type: string, msg: string) =>
+          msg.toLowerCase().startsWith(type.toLowerCase())
+            ? msg
+            : `${type}: ${msg}`;
+
+        const initialCommitMessage = formatMessage(
+          suggestion.type,
+          suggestion.message
+        );
+
+        const onRegenerate = async (): Promise<{
+          message: string;
+          reason: string;
+        }> => {
+          console.log("IBE: Regenerating suggestion...");
+          const newRaw = await generateCommitSuggestion(prompt, context);
+          console.log("IBE REGENERATED RAW:", newRaw);
+          const newSuggestion = parseSuggestionJson(newRaw);
+          return {
+            message: formatMessage(newSuggestion.type, newSuggestion.message),
+            reason: newSuggestion.reason,
+          };
+        };
 
         const reviewResult = await promptForCommitMessageWithWebview(
           initialCommitMessage,
-          suggestion.reason
+          suggestion.reason,
+          onRegenerate
         );
 
         if (!reviewResult) {
@@ -623,6 +602,47 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
+function parseSuggestionJson(rawSuggestion: string): {
+  type: string;
+  message: string;
+  reason: string;
+} {
+  let cleaned = (rawSuggestion || "").trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "");
+  }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  const parsed = JSON.parse(cleaned);
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !parsed.type ||
+    !parsed.message ||
+    !parsed.reason
+  ) {
+    throw new Error(
+      "AI response is missing required fields (type, message, reason)."
+    );
+  }
+
+  const type = String(parsed.type).trim();
+  const message = String(parsed.message).trim();
+  const reason = String(parsed.reason).trim();
+
+  if (!type || !message || !reason) {
+    throw new Error("AI response contains empty required fields.");
+  }
+
+  return { type, message, reason };
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -634,7 +654,8 @@ function escapeHtml(text: string): string {
 
 function promptForCommitMessageWithWebview(
   initialMessage: string,
-  reason: string
+  reason: string,
+  onRegenerate: () => Promise<{ message: string; reason: string }>
 ): Promise<{ action: "Commit" | "Commit & Push"; message: string } | undefined> {
   return new Promise((resolve) => {
     const panel = vscode.window.createWebviewPanel(
@@ -712,6 +733,7 @@ function promptForCommitMessageWithWebview(
       display: flex;
       gap: 10px;
       margin-top: 4px;
+      align-items: center;
     }
     button {
       padding: 7px 16px;
@@ -721,59 +743,126 @@ function promptForCommitMessageWithWebview(
       font-weight: 500;
       border: 1px solid var(--vscode-button-border, transparent);
     }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     .btn-primary {
       color: var(--vscode-button-foreground);
       background-color: var(--vscode-button-background);
     }
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       background-color: var(--vscode-button-hoverBackground);
     }
     .btn-secondary {
       color: var(--vscode-button-secondaryForeground);
       background-color: var(--vscode-button-secondaryBackground);
     }
-    .btn-secondary:hover {
+    .btn-secondary:hover:not(:disabled) {
       background-color: var(--vscode-button-secondaryHoverBackground);
+    }
+    .status-msg {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+    }
+    .error-msg {
+      font-size: 12px;
+      color: var(--vscode-errorForeground, #f48771);
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>IBE Commit: Review &amp; Edit Commit Message</h2>
-    ${reason ? `<div class="reason-box"><strong>Reason:</strong> ${escapeHtml(reason)}</div>` : ""}
+    <div id="reason-box" class="reason-box" style="${reason ? "" : "display: none;"}">
+      <strong>Reason:</strong> <span id="reason-text">${escapeHtml(reason || "")}</span>
+    </div>
     <label class="field-label" for="commit-message">Commit Message</label>
     <textarea id="commit-message" placeholder="Enter commit message...">${escapeHtml(initialMessage)}</textarea>
     <div class="buttons">
       <button id="btn-commit" class="btn-primary">Commit</button>
       <button id="btn-commit-push" class="btn-secondary">Commit &amp; Push</button>
+      <button id="btn-regenerate" class="btn-secondary">Regenerate</button>
+      <span id="status" class="status-msg" style="display: none;">Generating...</span>
     </div>
   </div>
 
   <script>
     const vscode = acquireVsCodeApi();
     const textarea = document.getElementById('commit-message');
+    const reasonBox = document.getElementById('reason-box');
+    const reasonText = document.getElementById('reason-text');
+    const btnCommit = document.getElementById('btn-commit');
+    const btnCommitPush = document.getElementById('btn-commit-push');
+    const btnRegenerate = document.getElementById('btn-regenerate');
+    const statusEl = document.getElementById('status');
+
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
-    document.getElementById('btn-commit').addEventListener('click', () => {
+    btnCommit.addEventListener('click', () => {
       vscode.postMessage({ action: 'Commit', message: textarea.value });
     });
 
-    document.getElementById('btn-commit-push').addEventListener('click', () => {
+    btnCommitPush.addEventListener('click', () => {
       vscode.postMessage({ action: 'Commit & Push', message: textarea.value });
+    });
+
+    btnRegenerate.addEventListener('click', () => {
+      btnCommit.disabled = true;
+      btnCommitPush.disabled = true;
+      btnRegenerate.disabled = true;
+      btnRegenerate.textContent = "Generating...";
+      statusEl.textContent = "Generating new suggestion with AI...";
+      statusEl.className = "status-msg";
+      statusEl.style.display = "inline";
+
+      vscode.postMessage({ action: 'Regenerate' });
     });
 
     textarea.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
-        document.getElementById('btn-commit').click();
+        if (!btnCommit.disabled) {
+          btnCommit.click();
+        }
+      }
+    });
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg) return;
+
+      if (msg.command === 'updateSuggestion') {
+        textarea.value = msg.message;
+        if (reasonBox && reasonText && msg.reason) {
+          reasonText.textContent = msg.reason;
+          reasonBox.style.display = "block";
+        }
+        btnCommit.disabled = false;
+        btnCommitPush.disabled = false;
+        btnRegenerate.disabled = false;
+        btnRegenerate.textContent = "Regenerate";
+        statusEl.style.display = "none";
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      } else if (msg.command === 'regenerationFailed') {
+        btnCommit.disabled = false;
+        btnCommitPush.disabled = false;
+        btnRegenerate.disabled = false;
+        btnRegenerate.textContent = "Regenerate";
+        statusEl.textContent = msg.error || "Regeneration failed.";
+        statusEl.className = "error-msg";
+        statusEl.style.display = "inline";
+        textarea.focus();
       }
     });
   </script>
 </body>
 </html>`;
 
-    panel.webview.onDidReceiveMessage((data) => {
+    panel.webview.onDidReceiveMessage(async (data) => {
       if (data.action === "Commit" || data.action === "Commit & Push") {
         const finalMessage = String(data.message || "").trim();
         if (!finalMessage) {
@@ -786,6 +875,25 @@ function promptForCommitMessageWithWebview(
         resolved = true;
         panel.dispose();
         resolve({ action: data.action, message: finalMessage });
+      } else if (data.action === "Regenerate") {
+        try {
+          const result = await onRegenerate();
+          panel.webview.postMessage({
+            command: "updateSuggestion",
+            message: result.message,
+            reason: result.reason,
+          });
+        } catch (error) {
+          const errMsg = String(error);
+          console.error("IBE REGENERATION ERROR:", error);
+          vscode.window.showErrorMessage(
+            `IBE Commit: Regeneration failed. ${errMsg}`
+          );
+          panel.webview.postMessage({
+            command: "regenerationFailed",
+            error: errMsg,
+          });
+        }
       }
     });
 
