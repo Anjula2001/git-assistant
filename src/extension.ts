@@ -231,10 +231,12 @@ export function activate(context: vscode.ExtensionContext) {
         // 3. Git History
         // --------------------------------
 
-        const history = await repository.log(5);
-        const recentCommits = history.map(
-          (commit: { message: string }) => commit.message
-        );
+        const history = await repository.log({ maxEntries: 5 });
+        const recentCommits = (history || [])
+          .slice(0, 5)
+          .map(
+            (commit: { message: string }) => commit.message
+          );
 
           console.log("IBE GIT HISTORY:");
           console.log(history);
