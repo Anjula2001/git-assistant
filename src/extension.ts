@@ -535,18 +535,12 @@ export function activate(context: vscode.ExtensionContext) {
             );
             console.log(lastIbeCommit);
 
-            const handleUndoSelection = async (
-              selection: string | undefined
-            ) => {
-              if (selection !== "Undo Last Commit") {
-                return;
-              }
-
+            const checkUndoSafety = async (): Promise<boolean> => {
               if (!lastIbeCommit || !lastIbeCommit.hash) {
                 vscode.window.showWarningMessage(
                   "IBE Commit: No tracked commit available to undo."
                 );
-                return;
+                return false;
               }
 
               if (
@@ -557,7 +551,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showWarningMessage(
                   "IBE Commit: The tracked repository no longer exists or does not match the active repository."
                 );
-                return;
+                return false;
               }
 
               if (typeof repository.status === "function") {
@@ -577,7 +571,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showWarningMessage(
                   "IBE Commit: Current HEAD commit does not match the tracked commit. Undo cannot be performed."
                 );
-                return;
+                return false;
               }
 
               const workingTreeChanges =
@@ -586,7 +580,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showWarningMessage(
                   "IBE Commit: Cannot undo commit because there are uncommitted working-tree changes. Please clean or stash them first."
                 );
-                return;
+                return false;
               }
 
               const indexChanges =
@@ -595,11 +589,52 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showWarningMessage(
                   "IBE Commit: Cannot undo commit because there are staged changes. Please unstage or commit them first."
                 );
+                return false;
+              }
+
+              return true;
+            };
+
+            const handleUndoSelection = async (
+              selection: string | undefined
+            ) => {
+              if (selection !== "Undo Last Commit") {
+                return;
+              }
+
+              const isSafeInitial = await checkUndoSafety();
+              if (!isSafeInitial || !lastIbeCommit) {
                 return;
               }
 
               const commitHash = lastIbeCommit.hash;
-              const commitMessage = lastIbeCommit.message;
+              const originalMessage = lastIbeCommit.message;
+              const defaultRevertMessage = `Revert "${
+                originalMessage.trim().split("\n")[0]
+              }"`;
+
+              const editedRevertMessage =
+                await vscode.window.showInputBox({
+                  prompt: "Edit the revert commit message",
+                  value: defaultRevertMessage,
+                  ignoreFocusOut: true,
+                  validateInput: (text) => {
+                    if (!text || !text.trim()) {
+                      return "Commit message cannot be empty.";
+                    }
+                    return null;
+                  },
+                });
+
+              if (editedRevertMessage === undefined) {
+                // User cancelled before confirmation; Git remains completely untouched.
+                return;
+              }
+
+              const isSafeBeforeRevert = await checkUndoSafety();
+              if (!isSafeBeforeRevert) {
+                return;
+              }
 
               try {
                 await new Promise<void>((resolve, reject) => {
@@ -622,6 +657,8 @@ export function activate(context: vscode.ExtensionContext) {
                   );
                 });
 
+                await repository.commit(editedRevertMessage.trim());
+
                 if (typeof repository.status === "function") {
                   try {
                     await repository.status();
@@ -630,8 +667,10 @@ export function activate(context: vscode.ExtensionContext) {
                   }
                 }
 
+                lastIbeCommit = undefined;
+
                 vscode.window.showInformationMessage(
-                  `IBE Commit: Revert prepared successfully. No revert commit has been created yet.\nOriginal commit: ${commitMessage}`
+                  `IBE Commit: Revert commit created successfully.\n${editedRevertMessage.trim()}`
                 );
               } catch (revertError) {
                 vscode.window.showErrorMessage(
