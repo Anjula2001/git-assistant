@@ -41,7 +41,7 @@
         {
           "id": "ibe-commit",
           "title": "IBE Commit",
-          "icon": "$(sparkle)"
+          "icon": "resources/ibe-commit.svg"
         }
       ]
     },

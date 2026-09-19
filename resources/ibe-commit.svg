@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main Git trunk line -->
+  <line x1="6" y1="4.5" x2="6" y2="19.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- Base commit nodes -->
+  <circle cx="6" cy="4.5" r="2.2" fill="currentColor"/>
+  <circle cx="6" cy="19.5" r="2.2" fill="currentColor"/>
+  <!-- Branch fork -->
+  <path d="M6 14C6 10.5 9.5 8.5 14 8.5H14.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- AI Intelligence Star Node -->
+  <path d="M18 4.5L19.2 7.3L22 8.5L19.2 9.7L18 12.5L16.8 9.7L14 8.5L16.8 7.3Z" fill="#00b4d8"/>
+</svg>
