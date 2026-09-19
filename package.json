@@ -1,9 +1,13 @@
 {
-  "name": "git-assistant",
+  "name": "ibe-commit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anjula2001/git-assistant.git"},
   "displayName": "IBE Commit",
   "description": "AI-powered Git commit and push assistant for VS Code",
-  "version": "0.0.1",
-  "publisher": "Anjula2001",
+  "version": "0.0.2",
+  "publisher": "ibe-commit",
+  "icon": "resources/icon.png",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
