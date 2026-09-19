@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=ibe-commit.ibe-commit"><img src="https://img.shields.io/badge/VS_Code_Marketplace-IBE_Commit-blue?logo=visualstudiocode" alt="Marketplace" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/version-0.0.2-blueviolet.svg" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.0.3-blueviolet.svg" alt="Version" />
 </p>
 
 ---
