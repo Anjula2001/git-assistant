@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import * as cp from "child_process";
 
 import { buildCommitPrompt } from "./ai/prompts";
 import { generateCommitSuggestion } from "./ai/service";
@@ -534,21 +535,113 @@ export function activate(context: vscode.ExtensionContext) {
             );
             console.log(lastIbeCommit);
 
-            const handleUndoSelection = (selection: string | undefined) => {
+            const handleUndoSelection = async (
+              selection: string | undefined
+            ) => {
               if (selection !== "Undo Last Commit") {
                 return;
               }
 
               if (!lastIbeCommit || !lastIbeCommit.hash) {
                 vscode.window.showWarningMessage(
-                  "IBE Commit: No tracked commit hash available to undo."
+                  "IBE Commit: No tracked commit available to undo."
                 );
                 return;
               }
 
-              vscode.window.showInformationMessage(
-                `IBE Commit: Tracked commit is ready for the next undo step.\n${lastIbeCommit.message}`
-              );
+              if (
+                !repository ||
+                repository.rootUri.fsPath !== lastIbeCommit.repoPath ||
+                !fs.existsSync(lastIbeCommit.repoPath)
+              ) {
+                vscode.window.showWarningMessage(
+                  "IBE Commit: The tracked repository no longer exists or does not match the active repository."
+                );
+                return;
+              }
+
+              if (typeof repository.status === "function") {
+                try {
+                  await repository.status();
+                } catch {
+                  // ignore
+                }
+              }
+
+              const headCommit =
+                repository.state.HEAD?.commit ||
+                (await repository.log({ maxEntries: 1 }))[0]?.hash ||
+                "";
+
+              if (!headCommit || headCommit !== lastIbeCommit.hash) {
+                vscode.window.showWarningMessage(
+                  "IBE Commit: Current HEAD commit does not match the tracked commit. Undo cannot be performed."
+                );
+                return;
+              }
+
+              const workingTreeChanges =
+                repository.state.workingTreeChanges || [];
+              if (workingTreeChanges.length > 0) {
+                vscode.window.showWarningMessage(
+                  "IBE Commit: Cannot undo commit because there are uncommitted working-tree changes. Please clean or stash them first."
+                );
+                return;
+              }
+
+              const indexChanges =
+                repository.state.indexChanges || [];
+              if (indexChanges.length > 0) {
+                vscode.window.showWarningMessage(
+                  "IBE Commit: Cannot undo commit because there are staged changes. Please unstage or commit them first."
+                );
+                return;
+              }
+
+              const commitHash = lastIbeCommit.hash;
+              const commitMessage = lastIbeCommit.message;
+
+              try {
+                await new Promise<void>((resolve, reject) => {
+                  cp.execFile(
+                    "git",
+                    ["revert", "--no-commit", commitHash],
+                    { cwd: repository.rootUri.fsPath },
+                    (error, stdout, stderr) => {
+                      if (error) {
+                        const errorDetails = (
+                          stderr ||
+                          stdout ||
+                          error.message
+                        ).trim();
+                        reject(new Error(errorDetails));
+                      } else {
+                        resolve();
+                      }
+                    }
+                  );
+                });
+
+                if (typeof repository.status === "function") {
+                  try {
+                    await repository.status();
+                  } catch {
+                    // ignore
+                  }
+                }
+
+                vscode.window.showInformationMessage(
+                  `IBE Commit: Revert prepared successfully. No revert commit has been created yet.\nOriginal commit: ${commitMessage}`
+                );
+              } catch (revertError) {
+                vscode.window.showErrorMessage(
+                  `IBE Commit: Git revert failed: ${
+                    revertError instanceof Error
+                      ? revertError.message
+                      : String(revertError)
+                  }`
+                );
+              }
             };
 
             if (action === "Commit") {
