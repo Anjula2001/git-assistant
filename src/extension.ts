@@ -534,10 +534,30 @@ export function activate(context: vscode.ExtensionContext) {
             );
             console.log(lastIbeCommit);
 
-            if (action === "Commit") {
+            const handleUndoSelection = (selection: string | undefined) => {
+              if (selection !== "Undo Last Commit") {
+                return;
+              }
+
+              if (!lastIbeCommit || !lastIbeCommit.hash) {
+                vscode.window.showWarningMessage(
+                  "IBE Commit: No tracked commit hash available to undo."
+                );
+                return;
+              }
+
               vscode.window.showInformationMessage(
-                `IBE Commit: Commit created successfully.\n${finalCommitMessage}`
+                `IBE Commit: Tracked commit is ready for the next undo step.\n${lastIbeCommit.message}`
               );
+            };
+
+            if (action === "Commit") {
+              vscode.window
+                .showInformationMessage(
+                  `IBE Commit: Commit created successfully.\n${finalCommitMessage}`,
+                  "Undo Last Commit"
+                )
+                .then(handleUndoSelection);
               return;
             }
 
@@ -589,9 +609,12 @@ export function activate(context: vscode.ExtensionContext) {
               lastIbeCommit.wasPushed = true;
             }
 
-            vscode.window.showInformationMessage(
-              `IBE Commit: Commit & Push successful.\n${finalCommitMessage}`
-            );
+            vscode.window
+              .showInformationMessage(
+                `IBE Commit: Commit & Push successful.\n${finalCommitMessage}`,
+                "Undo Last Commit"
+              )
+              .then(handleUndoSelection);
           } catch (error) {
             vscode.window.showErrorMessage(
               `IBE Commit: ${action} failed. ${String(
