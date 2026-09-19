@@ -613,74 +613,131 @@ export function activate(context: vscode.ExtensionContext) {
                 originalMessage.trim().split("\n")[0]
               }"`;
 
-              const editedRevertMessage =
-                await vscode.window.showInputBox({
-                  prompt: "Edit the revert commit message",
-                  value: defaultRevertMessage,
-                  ignoreFocusOut: true,
-                  validateInput: (text) => {
-                    if (!text || !text.trim()) {
-                      return "Commit message cannot be empty.";
+              await promptForUndoReviewWithWebview(
+                originalMessage,
+                defaultRevertMessage,
+                async (action, editedRevertMessage): Promise<boolean> => {
+                  const isSafeBeforeRevert = await checkUndoSafety();
+                  if (!isSafeBeforeRevert) {
+                    return false;
+                  }
+
+                  try {
+                    await new Promise<void>((resolve, reject) => {
+                      cp.execFile(
+                        "git",
+                        ["revert", "--no-commit", commitHash],
+                        { cwd: repository.rootUri.fsPath },
+                        (error, stdout, stderr) => {
+                          if (error) {
+                            const errorDetails = (
+                              stderr ||
+                              stdout ||
+                              error.message
+                            ).trim();
+                            reject(new Error(errorDetails));
+                          } else {
+                            resolve();
+                          }
+                        }
+                      );
+                    });
+                  } catch (revertError) {
+                    const errorMsg =
+                      revertError instanceof Error
+                        ? revertError.message
+                        : String(revertError);
+                    vscode.window.showErrorMessage(
+                      `IBE Commit: Git revert failed: ${errorMsg}`
+                    );
+                    throw revertError;
+                  }
+
+                  try {
+                    await repository.commit(editedRevertMessage);
+                  } catch (commitError) {
+                    const errorMsg =
+                      commitError instanceof Error
+                        ? commitError.message
+                        : String(commitError);
+                    vscode.window.showErrorMessage(
+                      `IBE Commit: Revert commit failed: ${errorMsg}`
+                    );
+                    throw commitError;
+                  }
+
+                  if (typeof repository.status === "function") {
+                    try {
+                      await repository.status();
+                    } catch {
+                      // ignore
                     }
-                    return null;
-                  },
-                });
+                  }
 
-              if (editedRevertMessage === undefined) {
-                // User cancelled before confirmation; Git remains completely untouched.
-                return;
-              }
-
-              const isSafeBeforeRevert = await checkUndoSafety();
-              if (!isSafeBeforeRevert) {
-                return;
-              }
-
-              try {
-                await new Promise<void>((resolve, reject) => {
-                  cp.execFile(
-                    "git",
-                    ["revert", "--no-commit", commitHash],
-                    { cwd: repository.rootUri.fsPath },
-                    (error, stdout, stderr) => {
-                      if (error) {
-                        const errorDetails = (
-                          stderr ||
-                          stdout ||
-                          error.message
-                        ).trim();
-                        reject(new Error(errorDetails));
+                  if (action === "Revert & Push") {
+                    if (
+                      !repository.state.remotes ||
+                      repository.state.remotes.length === 0
+                    ) {
+                      vscode.window.showWarningMessage(
+                        `IBE Commit: Revert commit created, but push was skipped because no remote repository is configured.\n${editedRevertMessage}`
+                      );
+                    } else {
+                      const currentBranch = repository.state.HEAD?.name;
+                      if (!currentBranch) {
+                        vscode.window.showWarningMessage(
+                          `IBE Commit: Revert commit created, but push was skipped because the repository is in a detached HEAD state. Please checkout a branch before pushing.\n${editedRevertMessage}`
+                        );
                       } else {
-                        resolve();
+                        try {
+                          await repository.push();
+                        } catch (pushError) {
+                          const errorText = String(pushError).toLowerCase();
+                          const isNoUpstream =
+                            errorText.includes("noupstreambranch") ||
+                            errorText.includes("no upstream") ||
+                            (pushError as any)?.gitErrorCode ===
+                              "NoUpstreamBranch";
+
+                          if (isNoUpstream) {
+                            console.log(
+                              `IBE: No upstream branch. Setting origin/${currentBranch}`
+                            );
+                            await repository.push(
+                              "origin",
+                              currentBranch,
+                              true
+                            );
+                          } else {
+                            const errorMsg =
+                              pushError instanceof Error
+                                ? pushError.message
+                                : String(pushError);
+                            vscode.window.showErrorMessage(
+                              `IBE Commit: Push failed: ${errorMsg}`
+                            );
+                            throw pushError;
+                          }
+                        }
                       }
                     }
-                  );
-                });
-
-                await repository.commit(editedRevertMessage.trim());
-
-                if (typeof repository.status === "function") {
-                  try {
-                    await repository.status();
-                  } catch {
-                    // ignore
                   }
+
+                  lastIbeCommit = undefined;
+
+                  if (action === "Revert & Push") {
+                    vscode.window.showInformationMessage(
+                      `IBE Commit: Revert & Push successful.\n${editedRevertMessage}`
+                    );
+                  } else {
+                    vscode.window.showInformationMessage(
+                      `IBE Commit: Revert commit created successfully.\n${editedRevertMessage}`
+                    );
+                  }
+
+                  return true;
                 }
-
-                lastIbeCommit = undefined;
-
-                vscode.window.showInformationMessage(
-                  `IBE Commit: Revert commit created successfully.\n${editedRevertMessage.trim()}`
-                );
-              } catch (revertError) {
-                vscode.window.showErrorMessage(
-                  `IBE Commit: Git revert failed: ${
-                    revertError instanceof Error
-                      ? revertError.message
-                      : String(revertError)
-                  }`
-                );
-              }
+              );
             };
 
             if (action === "Commit") {
@@ -837,31 +894,7 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function promptForCommitMessageWithWebview(
-  initialMessage: string,
-  reason: string,
-  onRegenerate: () => Promise<{ message: string; reason: string }>
-): Promise<{ action: "Commit" | "Commit & Push"; message: string } | undefined> {
-  return new Promise((resolve) => {
-    const panel = vscode.window.createWebviewPanel(
-      "ibeCommitReview",
-      "IBE Commit: Review Message",
-      vscode.ViewColumn.Active,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: false,
-      }
-    );
-
-    let resolved = false;
-
-    panel.webview.html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IBE Commit Review</title>
-  <style>
+const COMMON_REVIEW_CSS = `
     body {
       font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
       font-size: var(--vscode-font-size, 13px);
@@ -975,6 +1008,34 @@ function promptForCommitMessageWithWebview(
       font-size: 12px;
       color: var(--vscode-errorForeground, #f48771);
     }
+`;
+
+function promptForCommitMessageWithWebview(
+  initialMessage: string,
+  reason: string,
+  onRegenerate: () => Promise<{ message: string; reason: string }>
+): Promise<{ action: "Commit" | "Commit & Push"; message: string } | undefined> {
+  return new Promise((resolve) => {
+    const panel = vscode.window.createWebviewPanel(
+      "ibeCommitReview",
+      "IBE Commit: Review Message",
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: false,
+      }
+    );
+
+    let resolved = false;
+
+    panel.webview.html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBE Commit Review</title>
+  <style>
+${COMMON_REVIEW_CSS}
   </style>
 </head>
 <body>
@@ -1164,6 +1225,201 @@ function promptForCommitMessageWithWebview(
       if (!resolved) {
         resolved = true;
         resolve(undefined);
+      }
+    });
+  });
+}
+
+function promptForUndoReviewWithWebview(
+  originalCommitMessage: string,
+  defaultRevertMessage: string,
+  onConfirm: (
+    action: "Revert Commit" | "Revert & Push",
+    message: string
+  ) => Promise<boolean>
+): Promise<void> {
+  return new Promise((resolve) => {
+    const panel = vscode.window.createWebviewPanel(
+      "ibeCommitUndoReview",
+      "IBE Commit: Undo Review",
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: false,
+      }
+    );
+
+    let resolved = false;
+    let isDisposed = false;
+
+    panel.webview.html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBE Commit: Undo Review</title>
+  <style>
+${COMMON_REVIEW_CSS}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>IBE Commit: Undo Review</h2>
+    <div class="reason-box">
+      <strong>Original Commit:</strong>
+      <div style="margin-top: 4px; white-space: pre-wrap; font-family: var(--vscode-editor-font-family, monospace);">${escapeHtml(originalCommitMessage)}</div>
+    </div>
+    <label class="field-label" for="commit-message">Revert Commit Message</label>
+    <textarea id="commit-message" placeholder="Enter revert commit message...">${escapeHtml(defaultRevertMessage)}</textarea>
+    <div id="validation-error" class="validation-error" style="display: none;"></div>
+    <div class="buttons">
+      <button id="btn-revert" class="btn-primary">Revert Commit</button>
+      <button id="btn-revert-push" class="btn-secondary">Revert &amp; Push</button>
+      <button id="btn-cancel" class="btn-cancel">Cancel</button>
+      <span id="status" class="status-msg" style="display: none;"></span>
+    </div>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+    const textarea = document.getElementById('commit-message');
+    const validationError = document.getElementById('validation-error');
+    const btnRevert = document.getElementById('btn-revert');
+    const btnRevertPush = document.getElementById('btn-revert-push');
+    const btnCancel = document.getElementById('btn-cancel');
+    const statusEl = document.getElementById('status');
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    function validateMessage() {
+      const val = textarea.value.trim();
+      if (!val) {
+        validationError.textContent = "Commit message cannot be empty.";
+        validationError.style.display = "block";
+        textarea.classList.add("has-error");
+        textarea.focus();
+        return false;
+      }
+      validationError.style.display = "none";
+      textarea.classList.remove("has-error");
+      return true;
+    }
+
+    textarea.addEventListener('input', () => {
+      if (textarea.value.trim().length > 0) {
+        validationError.style.display = "none";
+        textarea.classList.remove("has-error");
+      }
+    });
+
+    function startOperation(action) {
+      if (!validateMessage()) {
+        return;
+      }
+      btnRevert.disabled = true;
+      btnRevertPush.disabled = true;
+      statusEl.textContent = action === 'Revert & Push' ? 'Reverting and pushing...' : 'Reverting commit...';
+      statusEl.className = 'status-msg';
+      statusEl.style.display = 'inline';
+
+      vscode.postMessage({ action, message: textarea.value });
+    }
+
+    btnRevert.addEventListener('click', () => {
+      startOperation('Revert Commit');
+    });
+
+    btnRevertPush.addEventListener('click', () => {
+      startOperation('Revert & Push');
+    });
+
+    btnCancel.addEventListener('click', () => {
+      vscode.postMessage({ action: 'Cancel' });
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!btnRevert.disabled) {
+          btnRevert.click();
+        }
+      }
+    });
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg) return;
+
+      if (msg.command === 'operationFailed') {
+        btnRevert.disabled = false;
+        btnRevertPush.disabled = false;
+        statusEl.textContent = msg.error || 'Operation failed.';
+        statusEl.className = 'error-msg';
+        statusEl.style.display = 'inline';
+        textarea.focus();
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+    panel.webview.onDidReceiveMessage(async (data) => {
+      if (data.action === "Revert Commit" || data.action === "Revert & Push") {
+        const finalMessage = String(data.message || "").trim();
+        if (!finalMessage) {
+          vscode.window.showWarningMessage(
+            "IBE Commit: Commit message cannot be empty."
+          );
+          if (!isDisposed) {
+            panel.webview.postMessage({
+              command: "operationFailed",
+              error: "Commit message cannot be empty.",
+            });
+          }
+          return;
+        }
+
+        try {
+          const success = await onConfirm(data.action, finalMessage);
+          if (success) {
+            resolved = true;
+            isDisposed = true;
+            panel.dispose();
+            resolve();
+          } else {
+            if (!isDisposed) {
+              panel.webview.postMessage({
+                command: "operationFailed",
+                error: "Safety check failed.",
+              });
+            }
+          }
+        } catch (error) {
+          if (isDisposed) {
+            return;
+          }
+          const errMsg = String(
+            error instanceof Error ? error.message : error
+          );
+          panel.webview.postMessage({
+            command: "operationFailed",
+            error: errMsg,
+          });
+        }
+      } else if (data.action === "Cancel") {
+        resolved = true;
+        isDisposed = true;
+        panel.dispose();
+        resolve();
+      }
+    });
+
+    panel.onDidDispose(() => {
+      isDisposed = true;
+      if (!resolved) {
+        resolved = true;
+        resolve();
       }
     });
   });
