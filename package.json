@@ -11,19 +11,49 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:ibe-commit.view"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-  {
-    "command": "git-assistant.hello",
-    "title": "IBE Commit: Hello"
-  },
-  {
-    "command": "git-assistant.configureApiKey",
-    "title": "IBE Commit: Configure OpenAI API Key"
-  }
-]
+      {
+        "command": "git-assistant.hello",
+        "title": "IBE Commit: Hello",
+        "shortTitle": "IBE Commit",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "git-assistant.configureApiKey",
+        "title": "IBE Commit: Configure OpenAI API Key"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "git-assistant.hello",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ibe-commit",
+          "title": "IBE Commit",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "ibe-commit": [
+        {
+          "type": "webview",
+          "id": "ibe-commit.view",
+          "name": "IBE Commit"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

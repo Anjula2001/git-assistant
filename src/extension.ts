@@ -835,12 +835,18 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // --------------------------------
-  // Register Commands
+  // Register Commands & Views
   // --------------------------------
+
+  const activityBarProvider = new IbeCommitViewProvider();
 
   context.subscriptions.push(
     disposable,
-    configureApiKey
+    configureApiKey,
+    vscode.window.registerWebviewViewProvider(
+      "ibe-commit.view",
+      activityBarProvider
+    )
   );
 }
 
@@ -1426,3 +1432,125 @@ ${COMMON_REVIEW_CSS}
 }
 
 export function deactivate() {}
+
+class IbeCommitViewProvider implements vscode.WebviewViewProvider {
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
+    webviewView.webview.options = {
+      enableScripts: true,
+    };
+
+    webviewView.webview.html = this._getHtmlForWebview();
+
+    webviewView.webview.onDidReceiveMessage((data) => {
+      if (data.command === "generateCommit") {
+        vscode.commands.executeCommand("git-assistant.hello");
+      } else if (data.command === "configureApiKey") {
+        vscode.commands.executeCommand("git-assistant.configureApiKey");
+      }
+    });
+  }
+
+  private _getHtmlForWebview(): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBE Commit</title>
+  <style>
+    body {
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-foreground);
+      background-color: var(--vscode-sideBar-background, transparent);
+      padding: 16px 12px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground));
+    }
+    .description {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
+      margin: 0;
+    }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid var(--vscode-button-border, transparent);
+      box-sizing: border-box;
+    }
+    .btn-primary {
+      color: var(--vscode-button-foreground);
+      background-color: var(--vscode-button-background);
+    }
+    .btn-primary:hover {
+      background-color: var(--vscode-button-hoverBackground);
+    }
+    .btn-secondary {
+      color: var(--vscode-button-secondaryForeground);
+      background-color: var(--vscode-button-secondaryBackground);
+    }
+    .btn-secondary:hover {
+      background-color: var(--vscode-button-secondaryHoverBackground);
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>IBE Commit</h2>
+      <p class="description">AI-powered Git commit assistant</p>
+    </div>
+    <div class="actions">
+      <button id="btn-generate" class="btn-primary">Generate Commit Message</button>
+      <button id="btn-config" class="btn-secondary">Configure API Key</button>
+    </div>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.getElementById('btn-generate').addEventListener('click', () => {
+      vscode.postMessage({ command: 'generateCommit' });
+    });
+    document.getElementById('btn-config').addEventListener('click', () => {
+      vscode.postMessage({ command: 'configureApiKey' });
+    });
+  </script>
+</body>
+</html>`;
+  }
+}
