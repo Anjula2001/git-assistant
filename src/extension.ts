@@ -229,10 +229,18 @@ export function activate(context: vscode.ExtensionContext) {
 
         // --------------------------------
         // 3. Git History
-        // Temporarily disabled
         // --------------------------------
 
-        const history: never[] = [];
+        const history = await repository.log(5);
+        const recentCommits = history.map(
+          (commit: { message: string }) => commit.message
+        );
+
+          console.log("IBE GIT HISTORY:");
+          console.log(history);
+
+          console.log("IBE FIRST HISTORY ITEM:");
+          console.log(history[0]);
 
         // --------------------------------
         // 4. Build Change Context
@@ -246,7 +254,7 @@ export function activate(context: vscode.ExtensionContext) {
 
           diff: filteredDiff,
 
-          recentCommits: history,
+          recentCommits: recentCommits,
         };
 
         console.log(
