@@ -769,6 +769,18 @@ function promptForCommitMessageWithWebview(
     .btn-cancel:hover:not(:disabled) {
       background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
     }
+    textarea.has-error {
+      border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+      outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+    }
+    .validation-error {
+      font-size: 12px;
+      color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground, #f48771));
+      background-color: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+      border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+      padding: 6px 10px;
+      border-radius: 3px;
+    }
     .status-msg {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
@@ -788,6 +800,7 @@ function promptForCommitMessageWithWebview(
     </div>
     <label class="field-label" for="commit-message">Commit Message</label>
     <textarea id="commit-message" placeholder="Enter commit message...">${escapeHtml(initialMessage)}</textarea>
+    <div id="validation-error" class="validation-error" style="display: none;"></div>
     <div class="buttons">
       <button id="btn-commit" class="btn-primary">Commit</button>
       <button id="btn-commit-push" class="btn-secondary">Commit &amp; Push</button>
@@ -800,6 +813,7 @@ function promptForCommitMessageWithWebview(
   <script>
     const vscode = acquireVsCodeApi();
     const textarea = document.getElementById('commit-message');
+    const validationError = document.getElementById('validation-error');
     const reasonBox = document.getElementById('reason-box');
     const reasonText = document.getElementById('reason-text');
     const btnCommit = document.getElementById('btn-commit');
@@ -811,15 +825,47 @@ function promptForCommitMessageWithWebview(
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
+    function validateMessage() {
+      const val = textarea.value.trim();
+      if (!val) {
+        validationError.textContent = "Commit message cannot be empty.";
+        validationError.style.display = "block";
+        textarea.classList.add("has-error");
+        textarea.focus();
+        return false;
+      }
+      validationError.style.display = "none";
+      textarea.classList.remove("has-error");
+      return true;
+    }
+
+    textarea.addEventListener('input', () => {
+      if (textarea.value.trim().length > 0) {
+        validationError.style.display = "none";
+        textarea.classList.remove("has-error");
+      }
+    });
+
     btnCommit.addEventListener('click', () => {
+      if (!validateMessage()) {
+        vscode.postMessage({ action: 'Commit', message: '' });
+        return;
+      }
       vscode.postMessage({ action: 'Commit', message: textarea.value });
     });
 
     btnCommitPush.addEventListener('click', () => {
+      if (!validateMessage()) {
+        vscode.postMessage({ action: 'Commit & Push', message: '' });
+        return;
+      }
       vscode.postMessage({ action: 'Commit & Push', message: textarea.value });
     });
 
     btnRegenerate.addEventListener('click', () => {
+      validationError.style.display = "none";
+      textarea.classList.remove("has-error");
+
       btnCommit.disabled = true;
       btnCommitPush.disabled = true;
       btnRegenerate.disabled = true;
@@ -850,6 +896,9 @@ function promptForCommitMessageWithWebview(
 
       if (msg.command === 'updateSuggestion') {
         textarea.value = msg.message;
+        validationError.style.display = "none";
+        textarea.classList.remove("has-error");
+
         if (reasonBox && reasonText && msg.reason) {
           reasonText.textContent = msg.reason;
           reasonBox.style.display = "block";
