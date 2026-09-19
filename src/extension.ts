@@ -481,57 +481,10 @@ export function activate(context: vscode.ExtensionContext) {
         console.log(action);
 
         // --------------------------------
-        // 8. Commit
+        // 8. Commit & Optional Push
         // --------------------------------
 
-        if (action === "Commit") {
-          try {
-            const filesToStage =
-              relevantChanges.map(
-                (
-                  change: {
-                    uri: vscode.Uri;
-                  }
-                ) => change.uri.fsPath
-              );
-
-            console.log(
-              "IBE FILES TO STAGE:"
-            );
-
-            console.log(filesToStage);
-
-            await repository.add(
-              filesToStage
-            );
-
-            console.log(
-              "IBE FILES STAGED."
-            );
-
-            await repository.commit(
-              suggestion.message
-            );
-
-            vscode.window.showInformationMessage(
-              `IBE Commit: Commit created successfully.\n${suggestion.message}`
-            );
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              `IBE Commit: Commit failed. ${String(
-                error
-              )}`
-            );
-          }
-
-          return;
-        }
-
-        // --------------------------------
-        // 9. Commit & Push
-        // --------------------------------
-
-        if (action === "Commit & Push") {
+        if (action === "Commit" || action === "Commit & Push") {
           try {
             const filesToStage =
               relevantChanges.map(
@@ -549,7 +502,6 @@ export function activate(context: vscode.ExtensionContext) {
             console.log(filesToStage);
 
             // Stage relevant files
-
             await repository.add(
               filesToStage
             );
@@ -559,7 +511,6 @@ export function activate(context: vscode.ExtensionContext) {
             );
 
             // Commit
-
             await repository.commit(
               suggestion.message
             );
@@ -568,8 +519,14 @@ export function activate(context: vscode.ExtensionContext) {
               "IBE COMMIT CREATED."
             );
 
-            // Push
+            if (action === "Commit") {
+              vscode.window.showInformationMessage(
+                `IBE Commit: Commit created successfully.\n${suggestion.message}`
+              );
+              return;
+            }
 
+            // Push (for "Commit & Push")
             if (!repository.state.remotes || repository.state.remotes.length === 0) {
               vscode.window.showWarningMessage(
                 `IBE Commit: Commit created successfully, but push was skipped because no remote repository is configured.\n${suggestion.message}`
@@ -618,7 +575,7 @@ export function activate(context: vscode.ExtensionContext) {
             );
           } catch (error) {
             vscode.window.showErrorMessage(
-              `IBE Commit: Commit & Push failed. ${String(
+              `IBE Commit: ${action} failed. ${String(
                 error
               )}`
             );
