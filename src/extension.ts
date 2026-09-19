@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 
 import { buildCommitPrompt } from "./ai/prompts";
 import { generateCommitSuggestion } from "./ai/service";
@@ -173,15 +175,15 @@ export function activate(context: vscode.ExtensionContext) {
         const rawDiff =
           await repository.diff();
 
-        // Get absolute paths of relevant files
+        // Get absolute paths of relevant files (including originalUri for renames)
 
-        const relevantFilePaths =
-          new Set(
-            relevantChanges.map(
-              (change: { uri: vscode.Uri }) =>
-                change.uri.fsPath
-            )
-          );
+        const relevantFilePaths = new Set<string>();
+        for (const change of relevantChanges) {
+          relevantFilePaths.add(change.uri.fsPath);
+          if ((change as any).originalUri?.fsPath) {
+            relevantFilePaths.add((change as any).originalUri.fsPath);
+          }
+        }
 
         // Split diff into individual file sections
 
@@ -209,16 +211,21 @@ export function activate(context: vscode.ExtensionContext) {
                 return false;
               }
 
-              const filePath = match[2];
+              const pathA = match[1].replace(/^"|"$/g, "");
+              const pathB = match[2].replace(/^"|"$/g, "");
 
-              const absolutePath =
-                vscode.Uri.joinPath(
-                  repository.rootUri,
-                  filePath
-                ).fsPath;
+              const absA = vscode.Uri.joinPath(
+                repository.rootUri,
+                pathA
+              ).fsPath;
+              const absB = vscode.Uri.joinPath(
+                repository.rootUri,
+                pathB
+              ).fsPath;
 
-              return relevantFilePaths.has(
-                absolutePath
+              return (
+                relevantFilePaths.has(absA) ||
+                relevantFilePaths.has(absB)
               );
             })
             .map(
@@ -226,6 +233,17 @@ export function activate(context: vscode.ExtensionContext) {
                 `diff --git ${part}`
             )
             .join("");
+
+        const MAX_DIFF_LENGTH = 8000;
+        let processedDiff = filteredDiff.trim();
+        if (!processedDiff) {
+          processedDiff =
+            "(No text diff available. Changes may include untracked new files, empty files, or file metadata changes)";
+        } else if (processedDiff.length > MAX_DIFF_LENGTH) {
+          processedDiff =
+            processedDiff.slice(0, MAX_DIFF_LENGTH) +
+            "\n\n... [Diff truncated: showing first 8,000 characters to keep prompt within limits] ...";
+        }
 
         // --------------------------------
         // 3. Git History
@@ -248,15 +266,70 @@ export function activate(context: vscode.ExtensionContext) {
         // 4. Build Change Context
         // --------------------------------
 
+        const analyzedFiles: Array<{
+          display: string;
+          status: "added" | "modified" | "deleted" | "renamed";
+        }> = relevantChanges.map(
+          (change: { uri: vscode.Uri; originalUri?: vscode.Uri; status?: number }) => {
+            const rootPath = repository.rootUri.fsPath;
+            const uri = change.uri;
+            const originalUri = change.originalUri;
+            const relPath =
+              path.relative(rootPath, uri.fsPath).replace(/\\/g, "/") ||
+              uri.fsPath;
+
+            if (originalUri && originalUri.fsPath !== uri.fsPath) {
+              const origRelPath =
+                path.relative(rootPath, originalUri.fsPath).replace(/\\/g, "/") ||
+                originalUri.fsPath;
+              return {
+                display: `${origRelPath} -> ${relPath} (renamed)`,
+                status: "renamed" as const,
+              };
+            }
+
+            if (
+              change.status === 2 ||
+              change.status === 6 ||
+              !fs.existsSync(uri.fsPath)
+            ) {
+              return {
+                display: `${relPath} (deleted)`,
+                status: "deleted" as const,
+              };
+            }
+
+            if (
+              change.status === 1 ||
+              change.status === 7 ||
+              change.status === 9
+            ) {
+              return {
+                display: `${relPath} (added)`,
+                status: "added" as const,
+              };
+            }
+
+            return {
+              display: `${relPath} (modified)`,
+              status: "modified" as const,
+            };
+          }
+        );
+
+        const summary = {
+          totalFiles: analyzedFiles.length,
+          modified: analyzedFiles.filter((f) => f.status === "modified").length,
+          added: analyzedFiles.filter((f) => f.status === "added").length,
+          deleted: analyzedFiles.filter((f) => f.status === "deleted").length,
+          renamed: analyzedFiles.filter((f) => f.status === "renamed").length,
+        };
+
         const changeContext = {
-          files: relevantChanges.map(
-            (change: { uri: vscode.Uri }) =>
-              change.uri.fsPath
-          ),
-
-          diff: filteredDiff,
-
+          files: analyzedFiles.map((f) => f.display),
+          diff: processedDiff,
           recentCommits: recentCommits,
+          summary: summary,
         };
 
         console.log(

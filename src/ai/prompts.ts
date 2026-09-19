@@ -1,11 +1,37 @@
-export function buildCommitPrompt(context: {
+export interface ChangeSummary {
+  totalFiles: number;
+  modified: number;
+  added: number;
+  deleted: number;
+  renamed: number;
+}
+
+export interface ChangeContext {
   files: string[];
   diff: string;
-  recentCommits: Array<{
-    message: string;
-    authorName?: string;
-  }>;
-}): string {
+  recentCommits: string[];
+  summary?: ChangeSummary;
+}
+
+export function buildCommitPrompt(context: ChangeContext): string {
+  const fileList =
+    context.files.length > 0
+      ? context.files.map((file) => `- ${file}`).join("\n")
+      : "(No changed files detected)";
+
+  const recentCommitsList =
+    context.recentCommits && context.recentCommits.length > 0
+      ? context.recentCommits
+          .map((commit: any) => `- ${typeof commit === "string" ? commit : commit.message}`)
+          .join("\n")
+      : "(No previous commits found - initial commit)";
+
+  const summaryLine = context.summary
+    ? `Change summary:
+- Total: ${context.summary.totalFiles} file(s) (${context.summary.modified} modified, ${context.summary.added} added, ${context.summary.deleted} deleted, ${context.summary.renamed} renamed)
+`
+    : "";
+
   return `
 You are a Git commit message assistant.
 
@@ -27,16 +53,14 @@ Expected JSON format:
   "message": "short imperative commit message",
   "reason": "brief explanation of why this type and message were chosen"
 }
-
+${summaryLine}
 Changed files:
-${context.files.join("\n")}
+${fileList}
 
 Git diff:
 ${context.diff}
 
 Recent commits:
-${context.recentCommits
-    .map((commit) => `- ${commit.message}`)
-    .join("\n")}
+${recentCommitsList}
 `;
 }
