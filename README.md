@@ -20,18 +20,18 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- 🤖 **Context-Aware AI Generation**: Analyzes staged/unstaged changes, git diffs, and recent commit history to produce accurate, high-quality conventional commit messages.
-- 📝 **Dedicated Review & Edit Panel**: Interactive webview directly in the VS Code Activity Bar allows you to inspect, edit, or regenerate messages before applying them.
-- 🚀 **Commit & Push in One Click**: Choose to apply the commit locally or commit and push directly to your remote repository.
-- 🛡️ **Safe Undo & Revert**: Accidental commit? Safely undo the last commit with built-in safety checks (clean working tree, matching HEAD, detached HEAD guards) and customizable revert messages.
-- 🔒 **Secure API Key Storage**: Stored securely using VS Code's native `SecretStorage` API—your credentials never touch configuration files or code.
-- 🎨 **Polished VS Code Experience**: Native Activity Bar integration, Source Control (SCM) title action, smooth loading states, and seamless theme support (Dark & Light).
+-  **Context-Aware AI Generation**: Analyzes staged/unstaged changes, git diffs, and recent commit history to produce accurate, high-quality conventional commit messages.
+-  **Dedicated Review & Edit Panel**: Interactive webview directly in the VS Code Activity Bar allows you to inspect, edit, or regenerate messages before applying them.
+-  **Commit & Push in One Click**: Choose to apply the commit locally or commit and push directly to your remote repository.
+-  **Safe Undo & Revert**: Accidental commit? Safely undo the last commit with built-in safety checks (clean working tree, matching HEAD, detached HEAD guards) and customizable revert messages.
+-  **Secure API Key Storage**: Stored securely using VS Code's native `SecretStorage` API—your credentials never touch configuration files or code.
+-  **Polished VS Code Experience**: Native Activity Bar integration, Source Control (SCM) title action, smooth loading states, and seamless theme support (Dark & Light).
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### 1. Installation
 
@@ -48,7 +48,7 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 ---
 
-## 🛠️ How to Use
+##  How to Use
 
 1. **Make Changes**: Edit or stage your code in any Git-tracked project.
 2. **Open IBE Commit**: Click the **IBE Commit** icon in the Activity Bar or click the icon in the Source Control (SCM) title bar.
@@ -62,7 +62,7 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 ---
 
-## ⌨️ Extension Commands
+##  Extension Commands
 
 | Command | Title | Description |
 | :--- | :--- | :--- |
@@ -71,7 +71,7 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 ---
 
-## 📋 Requirements
+##  Requirements
 
 - **VS Code**: Version `1.90.0` or higher.
 - **Git**: Installed and available in your system path.
@@ -79,6 +79,6 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under the [MIT License](LICENSE).
