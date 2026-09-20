@@ -2,10 +2,11 @@
   "name": "ibe-commit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Anjula2001/git-assistant.git"},
+    "url": "https://github.com/Anjula2001/git-assistant.git"
+  },
   "displayName": "IBE Commit",
   "description": "AI-powered Git commit and push assistant for VS Code",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "ibe-commit",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -16,7 +17,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:ibe-commit.view"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -60,13 +61,16 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "check": "tsc --noEmit -p ./"
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "check": "tsc --noEmit -p ./",
+    "package": "npm run compile && vsce package"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {

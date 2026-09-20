@@ -5,6 +5,7 @@ node_modules/**
 src/**
 *.ts
 tsconfig.json
+esbuild.js
 .eslintrc*
 .prettierrc*
 .gitignore
