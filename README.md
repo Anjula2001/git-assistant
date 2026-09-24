@@ -68,8 +68,8 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 | Command | Title | Description |
 | :--- | :--- | :--- |
-| `git-assistant.hello` | **IBE Commit: Hello** | Opens the IBE Commit sidebar panel. |
-| `git-assistant.configureApiKey` | **IBE Commit: Configure OpenAI API Key** | Prompts to securely save or update your OpenAI API key. |
+| `git-assistant.hello` | **IBE Commit: Hello** | Analyzes staged/unstaged changes and generates AI commit suggestions. |
+| `git-assistant.configureApiKey` | **IBE Commit: Configure Groq API Key** | Prompts to securely save or update your free Groq API key. |
 
 ---
 
@@ -77,7 +77,7 @@ Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.
 
 - **VS Code**: Version `1.90.0` or higher.
 - **Git**: Installed and available in your system path.
-- **OpenAI API Key**: Required for AI message generation (`gpt-4o-mini` or compatible models).
+- **Groq API Key**: A free API key from [Groq Console](https://console.groq.com/keys) (sign in with Google or GitHub; no credit card required).
 
 ---
 
