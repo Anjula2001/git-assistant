@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
       console.log("IBE: Groq API key saved securely.");
 
       vscode.window.showInformationMessage(
-        "✅ IBE Commit: Groq API key saved! You're ready to generate commit messages."
+        "IBE Commit: Groq API key saved! You're ready to generate commit messages."
       );
     }
   );
