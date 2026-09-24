@@ -30,7 +30,7 @@
       },
       {
         "command": "git-assistant.configureApiKey",
-        "title": "IBE Commit: Configure OpenAI API Key"
+        "title": "IBE Commit: Configure Groq API Key"
       }
     ],
     "menus": {
@@ -74,6 +74,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "openai": "^7.15.0"
+    "groq-sdk": "^1.6.0"
   }
 }

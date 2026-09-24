@@ -6,7 +6,7 @@ import * as cp from "child_process";
 import { buildCommitPrompt } from "./ai/prompts";
 import { generateCommitSuggestion } from "./ai/service";
 
-const SECRET_KEY = "ibe-commit.openai-api-key";
+const SECRET_KEY = "ibe-commit.groq-api-key";
 
 interface LastIbeCommit {
   hash: string;
@@ -19,7 +19,7 @@ let lastIbeCommit: LastIbeCommit | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   // --------------------------------
-  // Configure OpenAI API Key
+  // Configure Groq API Key
   // --------------------------------
 
   const configureApiKey = vscode.commands.registerCommand(
@@ -27,11 +27,42 @@ export function activate(context: vscode.ExtensionContext) {
     async () => {
       console.log("IBE: Configure API Key command started.");
 
+      // Step 1 — explain Groq and offer to open the signup page
+      const step1 = await vscode.window.showInformationMessage(
+        "IBE Commit uses Groq AI to generate commit messages. Groq is completely free — sign in with Gmail or GitHub to get your API key.",
+        { modal: false },
+        "Get Free API Key",
+        "I Already Have a Key"
+      );
+
+      if (!step1) {
+        // User dismissed
+        return;
+      }
+
+      if (step1 === "Get Free API Key") {
+        // Open Groq key creation page in the browser
+        await vscode.env.openExternal(
+          vscode.Uri.parse("https://console.groq.com/keys")
+        );
+      }
+
+      // Step 2 — input the key (whether they just got one or already had one)
       const apiKey = await vscode.window.showInputBox({
-        prompt: "Enter your OpenAI API key",
+        title: "Enter Groq API Key",
+        prompt: "Paste your Groq API key below. It starts with gsk_",
         password: true,
         ignoreFocusOut: true,
-        placeHolder: "sk-...",
+        placeHolder: "gsk_...",
+        validateInput: (value) => {
+          if (!value || value.trim().length === 0) {
+            return "API key cannot be empty.";
+          }
+          if (!value.trim().startsWith("gsk_")) {
+            return "This doesn't look like a Groq API key (should start with gsk_). Double-check and try again.";
+          }
+          return null;
+        },
       });
 
       if (!apiKey) {
@@ -41,15 +72,12 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await context.secrets.store(
-        SECRET_KEY,
-        apiKey.trim()
-      );
+      await context.secrets.store(SECRET_KEY, apiKey.trim());
 
-      console.log("IBE: API key saved securely.");
+      console.log("IBE: Groq API key saved securely.");
 
       vscode.window.showInformationMessage(
-        "IBE Commit: OpenAI API key saved securely."
+        "✅ IBE Commit: Groq API key saved! You're ready to generate commit messages."
       );
     }
   );
@@ -841,9 +869,9 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         const errorMessage = String(error);
-        if (errorMessage.includes("OpenAI API key is required")) {
+        if (errorMessage.includes("Groq API key is required")) {
           vscode.window.showWarningMessage(
-            "IBE Commit: OpenAI API key is required to generate commit suggestions."
+            "IBE Commit: Groq API key is required to generate commit suggestions."
           );
         } else {
           vscode.window.showErrorMessage(
