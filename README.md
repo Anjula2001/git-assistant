@@ -11,18 +11,19 @@
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=ibe-commit.ibe-commit"><img src="https://img.shields.io/badge/VS_Code_Marketplace-IBE_Commit-blue?logo=visualstudiocode" alt="Marketplace" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/version-0.0.3-blueviolet.svg" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.0.5-blueviolet.svg" alt="Version" />
 </p>
 
 ---
 
-**IBE Commit** is an intelligent VS Code extension that streamlines your Git workflow. It analyzes your workspace changes, inspects file diffs, understands your repository's recent commit conventions, and generates clean, context-aware commit messages using OpenAI—ready to review, edit, commit, and push with a single click.
+**IBE Commit** is an intelligent VS Code extension that streamlines your Git workflow. It analyzes your workspace changes, inspects file diffs, understands your repository's recent commit conventions, and generates clean, context-aware commit messages using ultra-fast, free Groq AI—ready to review, edit, commit, and push with a single click.
 
 ---
 
 ## Features
 
 -  **Context-Aware AI Generation**: Analyzes staged/unstaged changes, git diffs, and recent commit history to produce accurate, high-quality conventional commit messages.
+-  **Free & Lightning-Fast AI**: Powered by Groq for near-instant generation with generous free-tier limits.
 -  **Dedicated Review & Edit Panel**: Interactive webview directly in the VS Code Activity Bar allows you to inspect, edit, or regenerate messages before applying them.
 -  **Commit & Push in One Click**: Choose to apply the commit locally or commit and push directly to your remote repository.
 -  **Safe Undo & Revert**: Accidental commit? Safely undo the last commit with built-in safety checks (clean working tree, matching HEAD, detached HEAD guards) and customizable revert messages.
@@ -37,14 +38,15 @@
 
 Install **IBE Commit** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ibe-commit.ibe-commit) or install from the Extensions panel in VS Code (`Ctrl+Shift+X` or `Cmd+Shift+X`) by searching for `IBE Commit`.
 
-### 2. Configure Your OpenAI API Key
+### 2. Configure Your Groq API Key (Free)
 
-1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-2. Run:
+1. Get a free API key from [Groq Console](https://console.groq.com/keys) (sign in with Google or GitHub).
+2. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+3. Run:
    ```text
-   IBE Commit: Configure OpenAI API Key
+   IBE Commit: Configure Groq API Key
    ```
-3. Enter your OpenAI API key (starts with `sk-...`). It will be saved securely in VS Code's encrypted Secret Storage.
+4. Enter your Groq API key (starts with `gsk_...`). It will be saved securely in VS Code's encrypted Secret Storage.
 
 ---
 

@@ -6,7 +6,7 @@
   },
   "displayName": "IBE Commit",
   "description": "AI-powered Git commit and push assistant for VS Code",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "ibe-commit",
   "icon": "resources/icon.png",
   "license": "MIT",
