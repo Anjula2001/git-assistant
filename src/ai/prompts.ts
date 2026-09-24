@@ -45,7 +45,7 @@ Rules:
 - Choose the most appropriate Conventional Commit type.
 - Keep the commit message concise.
 - Use imperative mood.
-- Return only valid JSON.
+- Return ONLY a JSON object. Do not include markdown codeblocks, commentary, or text before/after the JSON.
 
 Expected JSON format:
 {

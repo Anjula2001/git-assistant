@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as cp from "child_process";
 
 import { buildCommitPrompt } from "./ai/prompts";
-import { generateCommitSuggestion } from "./ai/service";
+import { generateCommitSuggestion, clearModelCache } from "./ai/service";
 
 const SECRET_KEY = "ibe-commit.groq-api-key";
 
@@ -73,6 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       await context.secrets.store(SECRET_KEY, apiKey.trim());
+      clearModelCache();
 
       console.log("IBE: Groq API key saved securely.");
 
@@ -873,6 +874,21 @@ export function activate(context: vscode.ExtensionContext) {
           vscode.window.showWarningMessage(
             "IBE Commit: Groq API key is required to generate commit suggestions."
           );
+        } else if (
+          errorMessage.includes("401") ||
+          errorMessage.includes("invalid_api_key") ||
+          errorMessage.includes("Incorrect API key")
+        ) {
+          vscode.window
+            .showErrorMessage(
+              "IBE Commit: Groq API key is invalid or expired.",
+              "Configure API Key"
+            )
+            .then((choice) => {
+              if (choice === "Configure API Key") {
+                vscode.commands.executeCommand("git-assistant.configureApiKey");
+              }
+            });
         } else {
           vscode.window.showErrorMessage(
             `IBE Commit: Unexpected error. ${errorMessage}`
@@ -907,39 +923,69 @@ function parseSuggestionJson(rawSuggestion: string): {
   reason: string;
 } {
   let cleaned = (rawSuggestion || "").trim();
+
+  // Strip Markdown code blocks
   if (cleaned.startsWith("```")) {
     cleaned = cleaned
       .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "");
+      .replace(/\s*```$/i, "")
+      .trim();
   }
+
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
+
+  let parsed: any;
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  }
-  const parsed = JSON.parse(cleaned);
-
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    !parsed.type ||
-    !parsed.message ||
-    !parsed.reason
-  ) {
-    throw new Error(
-      "AI response is missing required fields (type, message, reason)."
-    );
+    try {
+      parsed = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+    } catch {
+      // Substring parse failed, will try other options
+    }
   }
 
-  const type = String(parsed.type).trim();
-  const message = String(parsed.message).trim();
-  const reason = String(parsed.reason).trim();
-
-  if (!type || !message || !reason) {
-    throw new Error("AI response contains empty required fields.");
+  if (!parsed) {
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // Direct parse failed
+    }
   }
 
-  return { type, message, reason };
+  if (parsed && typeof parsed === "object" && parsed.message) {
+    const type = String(parsed.type || "chore").trim();
+    const message = String(parsed.message).trim();
+    const reason = String(
+      parsed.reason || "Generated based on staged Git changes."
+    ).trim();
+
+    if (message) {
+      return { type, message, reason };
+    }
+  }
+
+  // Fallback: Regex extraction in case JSON was partially truncated
+  const typeMatch = cleaned.match(/"type"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i);
+  const messageMatch = cleaned.match(
+    /"message"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i
+  );
+  const reasonMatch = cleaned.match(
+    /"reason"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i
+  );
+
+  if (messageMatch && messageMatch[1]) {
+    const type = typeMatch ? typeMatch[1].trim() : "chore";
+    const message = messageMatch[1].trim();
+    const reason = reasonMatch
+      ? reasonMatch[1].trim()
+      : "Generated based on staged Git changes.";
+
+    return { type, message, reason };
+  }
+
+  throw new Error(
+    "AI response did not contain a valid commit message. Please try again."
+  );
 }
 
 function escapeHtml(text: string): string {
